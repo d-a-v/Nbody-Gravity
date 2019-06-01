@@ -3,6 +3,7 @@
 // Author      : Peter Whidden
 //============================================================================
 
+#include <fenv.h>
 #include <iostream>
 #include <fstream>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 #include "Bhtree.cpp"
 
 void initializeBodies(struct body* bods);
+void initializeJanus(struct body* bods);
 void runSimulation(struct body* b, char* image, double* hdImage);
 void interactBodies(struct body* b);
 void singleInteraction(struct body* a, struct body* b);
@@ -21,7 +23,7 @@ void createFrame(char* image, double* hdImage, struct body* b, int step);
 double toPixelSpace(double p, int size);
 void renderClear(char* image, double* hdImage);
 void renderBodies(struct body* b, double* hdImage);
-void colorDot(double x, double y, double vMag, double* hdImage);
+void colorDot(double x, double y, double vMag, double* hdImage, bool dual);
 void colorAt(int x, int y, const struct color& c, double f, double* hdImage);
 unsigned char colorDepth(unsigned char x, unsigned char p, double f);
 double clamp(double x);
@@ -29,12 +31,14 @@ void writeRender(char* data, double* hdImage, int step);
 
 int main()
 {
+    feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 	std::cout << SYSTEM_THICKNESS << "AU thick disk\n";;
 	char *image = new char[WIDTH*HEIGHT*3];
 	double *hdImage = new double[WIDTH*HEIGHT*3];
 	struct body *bodies = new struct body[NUM_BODIES];
 
-	initializeBodies(bodies);
+	//initializeBodies(bodies);
+	initializeJanus(bodies);
 	runSimulation(bodies, image, hdImage);
 	std::cout << "\nwe made it\n";
 	delete[] bodies;
@@ -98,6 +102,48 @@ void initializeBodies(struct body* bods)
 	std::cout << "\nTotal Disk Mass: " << totalExtraMass;
 	std::cout << "\nEach Particle weight: " << (EXTRA_MASS*SOLAR_MASS)/NUM_BODIES
 			  << "\n______________________________\n";
+}
+
+void initializeJanus(struct body* bods)
+{
+	using std::uniform_real_distribution;
+	uniform_real_distribution<double> randAngle (0.0, 200.0*PI);
+	uniform_real_distribution<double> randRadius (INNER_BOUND, SYSTEM_SIZE);
+	uniform_real_distribution<double> randHeight (0.0, SYSTEM_THICKNESS);
+	std::default_random_engine gen (0);
+	double angle;
+	double radius;
+	double velocity;
+	struct body *current;
+
+	//STARS
+	//STAR 1
+	current = &bods[0];
+	current->position.x = 0.0;
+	current->position.y = 0.0;
+	current->position.z = 0.0;
+	current->velocity.x = 0.0;
+	current->velocity.y = 0.0;
+	current->velocity.z = 0.0;
+	current->mass = EXTRA_MASS*SOLAR_MASS;
+
+    ///STARTS AT NUMBER OF STARS///
+	for (int index=1; index<NUM_BODIES; index++)
+	{
+		angle = randAngle(gen);
+		radius = sqrt(SYSTEM_SIZE)*sqrt(randRadius(gen));
+		velocity = 0;
+		current = &bods[index];
+		current->position.x =  radius*cos(angle);
+		current->position.y =  radius*sin(angle);
+		current->position.z =  randHeight(gen)-SYSTEM_THICKNESS/2;
+		current->velocity.x =  velocity*sin(angle);
+		current->velocity.y = -velocity*cos(angle);
+		current->velocity.z =  0.0;
+		current->mass = EXTRA_MASS*SOLAR_MASS;
+		if (index > NUM_BODIES/2)
+		    current->mass *= -1.0;
+	}
 }
 
 void runSimulation(struct body* b, char* image, double* hdImage)
@@ -264,7 +310,7 @@ void renderBodies(struct body* b, double* hdImage)
 			y>DOT_SIZE && y<HEIGHT-DOT_SIZE)
 		{
 			double vMag = magnitude(current->velocity);
-			colorDot(current->position.x, current->position.y, vMag, hdImage);
+			colorDot(current->position.x, current->position.y, vMag, hdImage, current->mass < 0);
 		}
 	}
 }
@@ -274,16 +320,28 @@ double toPixelSpace(double p, int size)
 	return (size/2.0)*(1.0+p/(SYSTEM_SIZE*RENDER_SCALE));
 }
 
-void colorDot(double x, double y, double vMag, double* hdImage)
+void colorDot(double x, double y, double vMag, double* hdImage, bool dual)
 {
-	constexpr double velocityMax = MAX_VEL_COLOR; //35000
-	constexpr double velocityMin = sqrt(0.8*(G*(SOLAR_MASS+EXTRA_MASS*SOLAR_MASS))/
-			(SYSTEM_SIZE*TO_METERS)); //MIN_VEL_COLOR;
-	const double vPortion = sqrt((vMag-velocityMin) / velocityMax);
 	color c;
+#if 1
+	double xx = 1.0;
+	if (dual)
+	{
+        c.r = 0;
+	    c.g = 0;
+	    c.b = xx;
+	}
+	else
+	{
+        c.r = xx;
+	    c.g = 0;
+	    c.b = 0;
+	}
+#else
 	c.r = clamp(4*(vPortion-0.333));
 	c.g = clamp(fmin(4*vPortion,4.0*(1.0-vPortion)));
 	c.b = clamp(4*(0.5-vPortion));
+#endif
 	#pragma omp for
 	for (int i=-DOT_SIZE/2; i<DOT_SIZE/2; i++)
 	{
@@ -291,11 +349,12 @@ void colorDot(double x, double y, double vMag, double* hdImage)
 		{
 			double xP = floor(toPixelSpace(x, WIDTH));
 			double yP = floor(toPixelSpace(y, HEIGHT));
-			double cFactor = PARTICLE_BRIGHTNESS /
+			double xcFactor = PARTICLE_BRIGHTNESS /
 					(pow(exp(pow(PARTICLE_SHARPNESS*
 					(xP+i-toPixelSpace(x, WIDTH)),2.0))
 				       + exp(pow(PARTICLE_SHARPNESS*
 					(yP+j-toPixelSpace(y, HEIGHT)),2.0)),/*1.25*/0.75)+1.0);
+            double cFactor = 1;
 			colorAt(int(xP+i),int(yP+j),c, cFactor, hdImage);
 		}
 	}

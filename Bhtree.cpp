@@ -84,15 +84,22 @@ public:
 			body* updatedBod;
 			if (!isExtern)
 			{
-				myBod.position.x = (insertBod->position.x*insertBod->mass +
-								       myBod.position.x*myBod.mass) /
-								  (insertBod->mass+myBod.mass);
-				myBod.position.y = (insertBod->position.y*insertBod->mass +
-									   myBod.position.y*myBod.mass) /
-								  (insertBod->mass+myBod.mass);
-				myBod.position.z = (insertBod->position.z*insertBod->mass +
-									   myBod.position.z*myBod.mass) /
-								  (insertBod->mass+myBod.mass);
+				double massum = insertBod->mass+myBod.mass;
+				if (massum == 0)
+				{
+					myBod.position.x = (myBod.position.x + insertBod->position.x) / 2;
+					myBod.position.y = (myBod.position.y + insertBod->position.y) / 2;
+					myBod.position.z = (myBod.position.z + insertBod->position.z) / 2;
+				}
+				else
+				{
+					myBod.position.x = (insertBod->position.x*insertBod->mass +
+										   myBod.position.x*myBod.mass) / massum;
+					myBod.position.y = (insertBod->position.y*insertBod->mass +
+										   myBod.position.y*myBod.mass) / massum;
+					myBod.position.z = (insertBod->position.z*insertBod->mass +
+										   myBod.position.z*myBod.mass) / massum;
+				}
 				myBod.mass += insertBod->mass;
 				updatedBod = insertBod;
 			} else {
@@ -196,8 +203,8 @@ if (dist > 0)
 				target->accel.z += friction*(other->velocity.z-target->velocity.z)/2;
 			}
 		}
-    #else
-        (void)singlePart;
+	#else
+		(void)singlePart;
 	#endif		
 }
 
@@ -205,14 +212,22 @@ if (dist > 0)
 
 	void interactInTree(body* bod)
 	{
+		if (bod == &myBod)
+			return;
+
 		if (isExternal())
 		{
-			if (bod != &myBod) { singleInteract(bod, &myBod, true); }
+			singleInteract(bod, &myBod, true);
+			return;
 		}
-		else if (octy.getLength() /
-				magnitude(myBod.position.x-bod->position.x,
-						  myBod.position.y-bod->position.y,
-						  myBod.position.z-bod->position.z) < MAX_DISTANCE)
+
+		double mag = magnitude(myBod.position.x-bod->position.x,
+							   myBod.position.y-bod->position.y,
+							   myBod.position.z-bod->position.z;
+		if (mag == 0)
+			return;
+
+		if ((octy.getLength() / mag) < MAX_DISTANCE)
 		{
 			singleInteract(bod, &myBod, false);
 		} else {
