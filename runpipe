@@ -1,0 +1,7 @@
+#!/bin/sh
+rm -f .fifo
+mkfifo .fifo p
+( < .fifo pv --quiet --buffer-size 10M | ffmpeg -y -framerate 45 -i - result.mkv ) & pid=$!
+./run -p .fifo
+wait $pid
+rm -f .fifo

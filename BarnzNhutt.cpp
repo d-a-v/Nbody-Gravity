@@ -3,7 +3,13 @@
 // Author      : Peter Whidden
 //============================================================================
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <unistd.h>
 #include <fenv.h>
+
 #include <iostream>
 #include <fstream>
 #include <stdlib.h>
@@ -28,13 +34,55 @@ unsigned char colorDepth(unsigned char x, unsigned char p, double f);
 double clamp(double x);
 void writeRender(char* data, double* hdImage, int step);
 
-int main()
+int pipefd = -1;
+
+void help (const char* name, int exitcode)
+{
+	std::cout
+		<< "Nbody-Gravity" << std::endl
+		<< "(https://github.com/PWhiddy/Nbody-Gravity)" << std::endl
+		<< std::endl
+		<< "usage: " << std::endl
+		<< "	" << name << " [options]" << std::endl
+		<< "options:" << std::endl
+		<< "	-h" << std::endl
+		<< "	-p <fifoname>	use fifo to write images (no file output) (for ffmpeg)" << std::endl
+		<< std::endl;
+
+	exit(exitcode);
+}
+
+
+int main (int argc, char* argv[])
 {
 #ifdef FE_NOMASK_ENV
 	if (DEBUG_INFO)
 		// enable all hardware floating point exceptions for debugging
 		feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
+
+	for (;;)
+	{
+		int n = getopt(argc, argv, "hp:");
+		if (n < 0)
+			break;
+		switch (n)
+		{
+		case 'h':
+			help(argv[0], EXIT_SUCCESS);
+			break;
+		case 'p':
+			if ((pipefd = open(optarg, O_WRONLY)) == -1)
+			{
+				perror(optarg);
+				exit(EXIT_FAILURE);
+			}
+			break;
+		default:
+			help(argv[0], EXIT_FAILURE);
+		}
+	}
+
 	std::cout << SYSTEM_THICKNESS << "AU thick disk\n";;
 	char *image = new char[WIDTH*HEIGHT*3];
 	double *hdImage = new double[WIDTH*HEIGHT*3];
@@ -325,6 +373,21 @@ void writeRender(char* data, double* hdImage, int step)
 	for (int i=0; i<WIDTH*HEIGHT*3; i++)
 	{
 		data[i] = int(255.0*clamp(hdImage[i]));
+	}
+
+	if (pipefd > 0)
+	{
+		char fmt [64];
+		int ret = sprintf(fmt, "P6\n%d %d\n255\n", WIDTH, HEIGHT);
+		ret = write(pipefd, fmt, ret);
+		if (ret != -1)
+			ret = write(pipefd, data, WIDTH*HEIGHT*3);
+		if (ret == -1)
+		{
+			std::cout << "writing image to pipe: " << strerror(errno) << std::endl;
+			exit(EXIT_FAILURE);
+		}
+		return;
 	}
 
 	int frame = step/RENDER_INTERVAL + 1;//RENDER_INTERVAL;
