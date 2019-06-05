@@ -4,6 +4,13 @@
 //============================================================================
 
 #include <fenv.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <unistd.h>
+#include <fenv.h>
+
 #include <iostream>
 #include <fstream>
 #include <stdlib.h>
@@ -29,9 +36,56 @@ unsigned char colorDepth(unsigned char x, unsigned char p, double f);
 double clamp(double x);
 void writeRender(char* data, double* hdImage, int step);
 
-int main()
+int pipefd = -1;
+
+void help (const char* name, int exitcode)
 {
     feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+	std::cout
+		<< "Nbody-Gravity" << std::endl
+		<< "(https://github.com/PWhiddy/Nbody-Gravity)" << std::endl
+		<< std::endl
+		<< "usage: " << std::endl
+		<< "	" << name << " [options]" << std::endl
+		<< "options:" << std::endl
+		<< "	-h" << std::endl
+		<< "	-p <fifoname>	use fifo to write images (no file output) (for ffmpeg)" << std::endl
+		<< std::endl;
+
+	exit(exitcode);
+}
+
+
+int main (int argc, char* argv[])
+{
+#ifdef FE_NOMASK_ENV
+	if (DEBUG_INFO)
+		// enable all hardware floating point exceptions for debugging
+		feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
+
+	for (;;)
+	{
+		int n = getopt(argc, argv, "hp:");
+		if (n < 0)
+			break;
+		switch (n)
+		{
+		case 'h':
+			help(argv[0], EXIT_SUCCESS);
+			break;
+		case 'p':
+			if ((pipefd = open(optarg, O_WRONLY)) == -1)
+			{
+				perror(optarg);
+				exit(EXIT_FAILURE);
+			}
+			break;
+		default:
+			help(argv[0], EXIT_FAILURE);
+		}
+	}
+
 	std::cout << SYSTEM_THICKNESS << "AU thick disk\n";;
 	char *image = new char[WIDTH*HEIGHT*3];
 	double *hdImage = new double[WIDTH*HEIGHT*3];
@@ -172,9 +226,9 @@ void interactBodies(struct body* bods)
 
 	// Build tree
 	Octant&& proot = Octant(0, /// center x
-	                          0, /// center y
-	                          0.1374, /// center z Does this help?
-	                          60*SYSTEM_SIZE);
+							  0, /// center y
+							  0.1374, /// center z Does this help?
+							  60*SYSTEM_SIZE);
 	Bhtree *tree = new Bhtree(std::move(proot));
 
 	for (int bIndex=1; bIndex<NUM_BODIES; bIndex++)
@@ -276,23 +330,13 @@ void createFrame(char* image, double* hdImage, struct body* b, int step)
 
 void renderClear(char* image, double* hdImage)
 {
-#if 0
-	for (int i=0; i<WIDTH*HEIGHT*3; i++)
-	{
-	//	char* current = image + i;
-		image[i] = 0; //char(image[i]/1.2);
-		hdImage[i] = 0.0;
-	}
-#else
-    memset(image, 0, WIDTH*HEIGHT*3);
-    memset(hdImage, 0, WIDTH*HEIGHT*3*sizeof(double));
-#endif
+	memset(image, 0, WIDTH*HEIGHT*3);
+	memset(hdImage, 0, WIDTH*HEIGHT*3*sizeof(double));
 }
 
 void renderBodies(struct body* b, double* hdImage)
 {
 	/// ORTHOGONAL PROJECTION
-    #pragma omp parallel
 	for(int index=0; index<NUM_BODIES; index++)
 	{
 		struct body *current = &b[index];
@@ -316,6 +360,15 @@ double toPixelSpace(double p, int size)
 
 void colorDot(double x, double y, double vMag, double* hdImage, bool dual)
 {
+#if 0
+	constexpr double velocityMax = MAX_VEL_COLOR; //35000
+	constexpr double velocityMin = sqrt(0.8*(G*(SOLAR_MASS+EXTRA_MASS*SOLAR_MASS))/
+			(SYSTEM_SIZE*TO_METERS)); //MIN_VEL_COLOR;
+	if (vMag < velocityMin)
+		return;
+	const double vPortion = sqrt((vMag-velocityMin) / velocityMax);
+#endif
+
 	color c;
 #if 1
 	double xx = 1.0;
@@ -336,7 +389,6 @@ void colorDot(double x, double y, double vMag, double* hdImage, bool dual)
 	c.g = clamp(fmin(4*vPortion,4.0*(1.0-vPortion)));
 	c.b = clamp(4*(0.5-vPortion));
 #endif
-	#pragma omp for
 	for (int i=-DOT_SIZE/2; i<DOT_SIZE/2; i++)
 	{
 		for (int j=-DOT_SIZE/2; j<DOT_SIZE/2; j++)
@@ -346,7 +398,7 @@ void colorDot(double x, double y, double vMag, double* hdImage, bool dual)
 			double xcFactor = PARTICLE_BRIGHTNESS /
 					(pow(exp(pow(PARTICLE_SHARPNESS*
 					(xP+i-toPixelSpace(x, WIDTH)),2.0))
-				       + exp(pow(PARTICLE_SHARPNESS*
+					   + exp(pow(PARTICLE_SHARPNESS*
 					(yP+j-toPixelSpace(y, HEIGHT)),2.0)),/*1.25*/0.75)+1.0);
             double cFactor = 1;
 			colorAt(int(xP+i),int(yP+j),c, cFactor, hdImage);
@@ -381,6 +433,21 @@ void writeRender(char* data, double* hdImage, int step)
 	for (int i=0; i<WIDTH*HEIGHT*3; i++)
 	{
 		data[i] = int(255.0*clamp(hdImage[i]));
+	}
+
+	if (pipefd > 0)
+	{
+		char fmt [64];
+		int ret = sprintf(fmt, "P6\n%d %d\n255\n", WIDTH, HEIGHT);
+		ret = write(pipefd, fmt, ret);
+		if (ret != -1)
+			ret = write(pipefd, data, WIDTH*HEIGHT*3);
+		if (ret == -1)
+		{
+			std::cout << "writing image to pipe: " << strerror(errno) << std::endl;
+			exit(EXIT_FAILURE);
+		}
+		return;
 	}
 
 	int frame = step/RENDER_INTERVAL + 1;//RENDER_INTERVAL;
