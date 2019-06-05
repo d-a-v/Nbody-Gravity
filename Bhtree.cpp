@@ -223,7 +223,7 @@ if (dist > 0)
 
 		double mag = magnitude(myBod.position.x-bod->position.x,
 							   myBod.position.y-bod->position.y,
-							   myBod.position.z-bod->position.z;
+							   myBod.position.z-bod->position.z);
 		if (mag == 0)
 			return;
 

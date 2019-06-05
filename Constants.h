@@ -26,7 +26,7 @@
 #define FRICTION_FACTOR 25.0 // Only applies if friction is enabled
 #define MAX_DISTANCE 0.75 //2.0  Barnes-Hut Distance approximation factor
 #define G 6.67408e-11 // The gravitational constant
-#define RENDER_SCALE 2.5 // "Zoom" of images produced
+#define RENDER_SCALE 100//2.5 // "Zoom" of images produced
 #define MAX_VEL_COLOR 40000.0  // Both in km/s
 #define MIN_VEL_COLOR 14000.0
 #define PARTICLE_BRIGHTNESS 0.35//0.03 for 256/512k, 0.4 for 16k

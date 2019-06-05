@@ -108,12 +108,9 @@ void initializeJanus(struct body* bods)
 {
 	using std::uniform_real_distribution;
 	uniform_real_distribution<double> randAngle (0.0, 200.0*PI);
-	uniform_real_distribution<double> randRadius (INNER_BOUND, SYSTEM_SIZE);
+	uniform_real_distribution<double> randRadius (-SYSTEM_SIZE, SYSTEM_SIZE);
 	uniform_real_distribution<double> randHeight (0.0, SYSTEM_THICKNESS);
 	std::default_random_engine gen (0);
-	double angle;
-	double radius;
-	double velocity;
 	struct body *current;
 
 	//STARS
@@ -125,24 +122,21 @@ void initializeJanus(struct body* bods)
 	current->velocity.x = 0.0;
 	current->velocity.y = 0.0;
 	current->velocity.z = 0.0;
-	current->mass = EXTRA_MASS*SOLAR_MASS;
+	current->mass = 1;
 
     ///STARTS AT NUMBER OF STARS///
 	for (int index=1; index<NUM_BODIES; index++)
 	{
-		angle = randAngle(gen);
-		radius = sqrt(SYSTEM_SIZE)*sqrt(randRadius(gen));
-		velocity = 0;
 		current = &bods[index];
-		current->position.x =  radius*cos(angle);
-		current->position.y =  radius*sin(angle);
-		current->position.z =  randHeight(gen)-SYSTEM_THICKNESS/2;
-		current->velocity.x =  velocity*sin(angle);
-		current->velocity.y = -velocity*cos(angle);
-		current->velocity.z =  0.0;
+		current->position.x =  randRadius(gen);
+		current->position.y =  randRadius(gen);
+		current->position.z =  randRadius(gen);
+		current->velocity.x =  0;
+		current->velocity.y =  0;
+		current->velocity.z =  0;
 		current->mass = EXTRA_MASS*SOLAR_MASS;
-		if (index > NUM_BODIES/2)
-		    current->mass *= -1.0;
+		if (index % 64 == 0)
+		    current->mass *= -64;
 	}
 }
 
