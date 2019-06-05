@@ -26,12 +26,12 @@
 #define FRICTION_FACTOR 25.0 // Only applies if friction is enabled
 #define MAX_DISTANCE 0.75 //2.0  Barnes-Hut Distance approximation factor
 #define G 6.67408e-11 // The gravitational constant
-#define RENDER_SCALE 100//2.5 // "Zoom" of images produced
+#define RENDER_SCALE 2000//2.5 // "Zoom" of images produced
 #define MAX_VEL_COLOR 40000.0  // Both in km/s
 #define MIN_VEL_COLOR 14000.0
 #define PARTICLE_BRIGHTNESS 0.35//0.03 for 256/512k, 0.4 for 16k
 #define PARTICLE_SHARPNESS 1.0 // Probably leave this alone
-#define DOT_SIZE 8 // 15  // Range of pixels to render
+#define DOT_SIZE 3 // 15  // Range of pixels to render
 #define TIME_STEP (3*32*1024) //(1*128*1024) Simulated time between integration steps, in seconds
 #define STEP_COUNT 16000 // Will automatically stop running after this many steps
 #define RENDER_INTERVAL 1 // How many timesteps to simulate in between each frame rendered
